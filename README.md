@@ -21,10 +21,11 @@ Codex state.
 - Runs Codex in a persistent tmux session.
 - Always starts Codex with `--yolo`.
 - Starts a new Codex conversation or resumes a specific existing conversation.
-- Detects usage-limit and rate-limit messages from recent terminal output.
+- Detects canonical Codex usage-limit warnings without matching informational
+  quota text or ordinary discussion of rate limits.
 - Refreshes `/status` three times by default to reduce stale quota readings.
 - Evaluates all quota windows shown by Codex, not only the short-term window.
-- Parses same-day, dated, cross-year, and selected `try again at` reset times.
+- Parses same-day, time-only, dated, and cross-year reset times.
 - Polls at least every 30 minutes by default, so manual usage resets are found.
 - Resumes the existing Goal in the same Codex process with `/goal resume`.
 - Never injects `/status` or `/goal resume` while a tmux client is attached.
@@ -97,6 +98,21 @@ yourself from the Codex prompt:
 
 `codex-goal-resumer` does not create Goals. It only monitors an existing Goal
 and resumes it after quota becomes available.
+
+### Safe interactive workflow
+
+The recommended workflow is:
+
+1. Start `codex-goal-resumer` from a normal shell.
+2. Enter the `/goal ...` command in the Codex window and submit it yourself.
+3. Wait for the Goal to begin.
+4. Detach with `Ctrl-b d` to enable unattended watchdog commands.
+5. Attach again whenever you want to inspect progress.
+
+The watchdog continues monitoring while you are attached, but it deliberately
+waits before sending `/status` or `/goal resume`. This means it cannot submit a
+partially typed command on your behalf. If a limit occurs while you are
+attached, detach to let automatic recovery proceed.
 
 ## Resume an existing Codex conversation
 
@@ -253,6 +269,15 @@ Informational text such as `usage limit reset available`, general mentions of
 rate limits, and standalone `try again at` text do not trigger the Limited
 state.
 
+The canonical warning may include account-specific guidance and a reset time:
+
+```text
+You've hit your usage limit. Upgrade to Pro ..., or try again at 11:21 PM.
+```
+
+The detector keys on the complete warning sentence, while reset parsing accepts
+both `11:21 PM` and dated forms such as `Sep 11th, 2026 4:37 PM`.
+
 ### Multiple quota windows
 
 All quota records in the latest status generation are evaluated. If any
@@ -361,6 +386,7 @@ The watchdog window emits concise timestamped messages:
 
 ```text
 [15:42:03] usage limit detected
+[15:42:03] waiting for tmux clients to detach before sending commands
 [15:42:03] refreshing status (1/3)
 [15:42:06] refreshing status (2/3)
 [15:42:09] refreshing status (3/3)
@@ -373,6 +399,35 @@ The watchdog window emits concise timestamped messages:
 ```
 
 ## Troubleshooting
+
+### The watchdog is waiting for tmux clients to detach
+
+This log message is an input-safety feature:
+
+```text
+waiting for tmux clients to detach before sending commands
+```
+
+The watchdog detected a limit but will not inject keystrokes while a user is
+attached. Finish or clear any text in the Codex input, then press `Ctrl-b d`.
+The watchdog will continue the `/status` refresh cycle after the session is
+detached.
+
+### Informational quota text triggered recovery
+
+Current releases distinguish an exhausted warning from messages such as:
+
+```text
+You have 1 usage limit reset available. Run /usage to use one.
+```
+
+That message does not indicate exhausted quota and must not trigger recovery.
+If it does, update to the latest version and reinstall the binary:
+
+```bash
+git pull
+cargo install --path . --force
+```
 
 ### tmux is missing
 
@@ -488,7 +543,8 @@ cargo build --release
 
 Unit tests cover quota percentages, multiple windows, newest-status selection,
 same-day and weekly resets, cross-year dates, malformed output, stale reset
-fallbacks, capture tracking, and safe Codex command construction.
+fallbacks, canonical limit warnings, informational false positives, time-only
+reset timestamps, capture tracking, and safe Codex command construction.
 
 ## Contributing
 
