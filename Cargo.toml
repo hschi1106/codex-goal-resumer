@@ -1,0 +1,17 @@
+[package]
+name = "codex-goal-resumer"
+version = "0.1.0"
+edition = "2021"
+description = "A tmux watchdog that resumes Codex goals after usage limits reset"
+license = "MIT"
+readme = "README.md"
+repository = "https://github.com/hschi1106/codex-goal-resumer"
+homepage = "https://github.com/hschi1106/codex-goal-resumer"
+keywords = ["codex", "cli", "tmux", "watchdog"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1.0"
+chrono = { version = "0.4", default-features = true }
+clap = { version = "4.5", features = ["derive"] }
+regex = "1.11"
