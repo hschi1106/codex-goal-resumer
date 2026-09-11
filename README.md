@@ -247,10 +247,11 @@ The parser groups repeated quota labels into status generations and uses the
 newest generation. An old `0% left` value therefore does not override a later
 `100% left` value. The refresh count and delay are configurable.
 
-Limit detection requires an explicit exhausted message such as `usage limit
-reached`, `rate limited`, or `you've hit your usage limit`. Informational text
-such as `usage limit reset available` or `information on rate limits` does not
-trigger the Limited state.
+Limit detection requires a canonical exhausted message such as `You've hit
+your usage limit.` or `Usage limit reached. You've reached your usage limit.`
+Informational text such as `usage limit reset available`, general mentions of
+rate limits, and standalone `try again at` text do not trigger the Limited
+state.
 
 ### Multiple quota windows
 

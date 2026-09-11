@@ -134,20 +134,34 @@ fn next_dated_reset(
 }
 
 fn parse_try_again(text: &str, now: DateTime<FixedOffset>) -> Option<DateTime<FixedOffset>> {
-    let capture = try_again_regex().captures_iter(text).last()?;
-    let month = parse_month(&capture[1])?;
-    let day = capture[2].parse().ok()?;
-    let year = capture[3].parse().ok()?;
-    let hour: u32 = capture[4].parse().ok()?;
-    let minute = capture[5].parse().ok()?;
-    let hour = match capture[6].to_ascii_uppercase().as_str() {
+    if let Some(capture) = try_again_regex().captures_iter(text).last() {
+        let month = parse_month(&capture[1])?;
+        let day = capture[2].parse().ok()?;
+        let year = capture[3].parse().ok()?;
+        let time = parse_12_hour_time(&capture[4], &capture[5], &capture[6])?;
+        let date = NaiveDate::from_ymd_opt(year, month, day)?;
+        return local_datetime(now.offset(), date.and_time(time));
+    }
+
+    let capture = try_again_time_regex().captures_iter(text).last()?;
+    let time = parse_12_hour_time(&capture[1], &capture[2], &capture[3])?;
+    let date = now.date_naive();
+    let mut reset = local_datetime(now.offset(), date.and_time(time))?;
+    if reset <= now {
+        reset = local_datetime(now.offset(), (date + Duration::days(1)).and_time(time))?;
+    }
+    Some(reset)
+}
+
+fn parse_12_hour_time(hour: &str, minute: &str, period: &str) -> Option<NaiveTime> {
+    let hour: u32 = hour.parse().ok()?;
+    let minute = minute.parse().ok()?;
+    let hour = match period.to_ascii_uppercase().as_str() {
         "AM" => hour % 12,
         "PM" => hour % 12 + 12,
         _ => return None,
     };
-    let date = NaiveDate::from_ymd_opt(year, month, day)?;
-    let time = NaiveTime::from_hms_opt(hour, minute, 0)?;
-    local_datetime(now.offset(), date.and_time(time))
+    NaiveTime::from_hms_opt(hour, minute, 0)
 }
 
 fn local_datetime(offset: &FixedOffset, datetime: NaiveDateTime) -> Option<DateTime<FixedOffset>> {
@@ -194,10 +208,15 @@ fn try_again_regex() -> &'static Regex {
     })
 }
 
+fn try_again_time_regex() -> &'static Regex {
+    static REGEX: OnceLock<Regex> = OnceLock::new();
+    REGEX.get_or_init(|| Regex::new(r"(?i)try again at\s+(\d{1,2}):(\d{2})\s*(AM|PM)").unwrap())
+}
+
 fn usage_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\b(?:usage\s+(?:limited|limit\s+(?:reached|exceeded))|you(?:'|’)ve\s+hit\s+your\s+usage\s+limit|rate\s+(?:limited|limit\s+(?:reached|exceeded))|try\s+again\s+at)\b").unwrap()
+        Regex::new(r"(?i)(?:you(?:'|’)ve\s+hit\s+your\s+usage\s+limit(?:\s+for\s+[^.\r\n]+)?\.|usage\s+limit\s+reached\.\s+you(?:'|’)ve\s+reached\s+your\s+usage\s+limit\.|rate\s+limit\s+(?:reached|exceeded)\s*[:.])").unwrap()
     })
 }
 
@@ -314,6 +333,22 @@ mod tests {
     }
 
     #[test]
+    fn parses_time_only_try_again_timestamp() {
+        let status = parse_latest_status(
+            "You've hit your usage limit. Upgrade to Pro or try again at 11:21 PM.",
+            now(9, 11, 20),
+        );
+        assert_eq!(
+            status
+                .next_reset
+                .unwrap()
+                .format("%Y-%m-%d %H:%M")
+                .to_string(),
+            "2026-09-11 23:21"
+        );
+    }
+
+    #[test]
     fn latest_status_wins() {
         let text = "5h limit: 0% left\nWeekly limit: 0% left\n\n...\n\n5h limit: 100% left\nWeekly limit: 100% left";
         assert_eq!(
@@ -357,15 +392,20 @@ mod tests {
     #[test]
     fn explicit_limit_messages_are_detected() {
         for message in [
-            "usage limited",
-            "usage limit reached",
-            "usage limit exceeded",
-            "You've hit your usage limit",
-            "rate limited",
-            "rate limit reached",
-            "try again at Sep 11th, 2026 4:37 PM",
+            "You've hit your usage limit.",
+            "You've hit your usage limit for GPT-6.",
+            "Usage limit reached. You've reached your usage limit. Increase your limits to continue using codex.",
+            "rate limit reached.",
+            "rate limit exceeded: retry later",
         ] {
             assert!(contains_usage_limit(message), "missed: {message}");
         }
+    }
+
+    #[test]
+    fn ordinary_try_again_text_is_not_a_limit_event() {
+        assert!(!contains_usage_limit(
+            "The deployment failed; try again at 4:37 PM."
+        ));
     }
 }
