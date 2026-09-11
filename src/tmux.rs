@@ -95,6 +95,20 @@ impl Tmux {
             .is_ok_and(|output| output.status.success())
     }
 
+    pub fn session_attached(&self) -> Result<bool> {
+        let output = checked(
+            Command::new("tmux").args([
+                "display-message",
+                "-p",
+                "-t",
+                &self.target,
+                "#{session_attached}",
+            ]),
+            "unable to inspect tmux clients",
+        )?;
+        Ok(String::from_utf8_lossy(&output.stdout).trim() != "0")
+    }
+
     pub fn capture_recent(&self) -> Result<String> {
         let output = checked(
             Command::new("tmux").args([

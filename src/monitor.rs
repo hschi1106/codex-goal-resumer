@@ -129,6 +129,7 @@ pub fn run(tmux: Tmux, config: MonitorConfig) -> Result<()> {
 
 fn refresh_status(tmux: &Tmux, config: &MonitorConfig) -> Result<String> {
     for index in 1..=config.status_refresh_count {
+        wait_until_detached(tmux)?;
         log(&format!(
             "refreshing status ({index}/{})",
             config.status_refresh_count
@@ -140,6 +141,7 @@ fn refresh_status(tmux: &Tmux, config: &MonitorConfig) -> Result<String> {
 }
 
 fn resume_and_verify(tmux: &Tmux, tracker: &mut CaptureTracker) -> Result<bool> {
+    wait_until_detached(tmux)?;
     tracker.observe(&tmux.capture_recent()?);
     log("sending /goal resume");
     tmux.send_line("/goal resume")?;
@@ -147,6 +149,18 @@ fn resume_and_verify(tmux: &Tmux, tracker: &mut CaptureTracker) -> Result<bool> 
     let capture = tmux.capture_recent()?;
     let fresh = tracker.observe(&capture);
     Ok(!contains_usage_limit(&fresh))
+}
+
+fn wait_until_detached(tmux: &Tmux) -> Result<()> {
+    let mut announced = false;
+    while tmux.session_attached()? {
+        if !announced {
+            log("waiting for tmux clients to detach before sending commands");
+            announced = true;
+        }
+        thread::sleep(Duration::from_secs(1));
+    }
+    Ok(())
 }
 
 fn next_wait(

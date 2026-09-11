@@ -197,7 +197,7 @@ fn try_again_regex() -> &'static Regex {
 fn usage_regex() -> &'static Regex {
     static REGEX: OnceLock<Regex> = OnceLock::new();
     REGEX.get_or_init(|| {
-        Regex::new(r"(?i)\b(?:usage\s+limit(?:ed|\s+reached)?|you(?:'|’)ve\s+hit\s+your\s+usage\s+limit|rate\s+limit(?:ed|\s+reached)?|try\s+again\s+at)\b").unwrap()
+        Regex::new(r"(?i)\b(?:usage\s+(?:limited|limit\s+(?:reached|exceeded))|you(?:'|’)ve\s+hit\s+your\s+usage\s+limit|rate\s+(?:limited|limit\s+(?:reached|exceeded))|try\s+again\s+at)\b").unwrap()
     })
 }
 
@@ -338,5 +338,34 @@ mod tests {
             parse_latest_status(text, now(9, 11, 12)).quota,
             QuotaState::Exhausted
         );
+    }
+
+    #[test]
+    fn available_manual_reset_message_is_not_a_limit_event() {
+        assert!(!contains_usage_limit(
+            "You have 1 usage limit reset available. Run /usage to use one."
+        ));
+    }
+
+    #[test]
+    fn status_rate_limit_description_is_not_a_limit_event() {
+        assert!(!contains_usage_limit(
+            "Visit the settings page for information on rate limits and credits"
+        ));
+    }
+
+    #[test]
+    fn explicit_limit_messages_are_detected() {
+        for message in [
+            "usage limited",
+            "usage limit reached",
+            "usage limit exceeded",
+            "You've hit your usage limit",
+            "rate limited",
+            "rate limit reached",
+            "try again at Sep 11th, 2026 4:37 PM",
+        ] {
+            assert!(contains_usage_limit(message), "missed: {message}");
+        }
     }
 }

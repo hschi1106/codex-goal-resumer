@@ -27,6 +27,7 @@ Codex state.
 - Parses same-day, dated, cross-year, and selected `try again at` reset times.
 - Polls at least every 30 minutes by default, so manual usage resets are found.
 - Resumes the existing Goal in the same Codex process with `/goal resume`.
+- Never injects `/status` or `/goal resume` while a tmux client is attached.
 - Avoids retriggering on old usage-limit messages left in terminal history.
 - Uses a synchronous, dependency-light implementation.
 
@@ -219,6 +220,13 @@ The monitor has two states:
 - **Limited:** refresh status, parse the newest quota generation, wait, and
   send `/goal resume` when quota is available.
 
+For input safety, the watchdog does not use `tmux send-keys` while any client is
+attached to the session. If a limit is detected while you are watching Codex,
+the watchdog logs `waiting for tmux clients to detach before sending commands`.
+Detach with `Ctrl-b d` to allow automatic status refresh and Goal resumption.
+This prevents watchdog commands from sharing Codex's input buffer with text you
+are typing.
+
 After sending `/goal resume`, the watchdog waits 15 seconds and inspects new
 output. A new usage-limit message keeps the state Limited. Otherwise monitoring
 returns to Running. The cycle can repeat any number of times.
@@ -238,6 +246,11 @@ capture and parse the latest status
 The parser groups repeated quota labels into status generations and uses the
 newest generation. An old `0% left` value therefore does not override a later
 `100% left` value. The refresh count and delay are configurable.
+
+Limit detection requires an explicit exhausted message such as `usage limit
+reached`, `rate limited`, or `you've hit your usage limit`. Informational text
+such as `usage limit reset available` or `information on rate limits` does not
+trigger the Limited state.
 
 ### Multiple quota windows
 
